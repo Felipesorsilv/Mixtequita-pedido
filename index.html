@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preventa Paletas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        body { background-color: #f4f6f9; padding-bottom: 80px; }
+        .card-product { margin-bottom: 10px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .qty-controls button { width: 35px; height: 35px; border-radius: 50%; padding: 0; font-weight: bold; }
+        .total-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #2c3e50; color: white; padding: 15px; z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); }
+        
+        /* Estilos del Ticket (Oculto visualmente hasta generar) */
+        #ticket-container {
+            width: 350px;
+            background: #fff;
+            padding: 20px;
+            font-family: 'Courier New', Courier, monospace; /* Fuente tipo Ticket */
+            color: #000;
+            position: absolute;
+            top: -9999px; /* Sacarlo de la pantalla */
+            left: -9999px;
+            border: 1px solid #ddd;
+        }
+        .ticket-header { text-align: center; margin-bottom: 15px; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+        .ticket-footer { text-align: center; margin-top: 15px; border-top: 2px dashed #000; padding-top: 10px; }
+        .ticket-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; }
+        .ticket-total { font-size: 20px; font-weight: bold; margin-top: 10px; text-align: right; }
+    </style>
+</head>
+<body>
+
+<div class="container mt-3">
+    <h3 class="text-center mb-4">🍦 Pedido de Paletas</h3>
+    
+    <div class="card p-3 mb-4">
+        <h5>Datos del Cliente</h5>
+        <input type="text" id="clienteNombre" class="form-control mb-2" placeholder="Nombre del Cliente">
+        <input type="text" id="clienteDireccion" class="form-control" placeholder="Dirección del Negocio/Casa">
+    </div>
+
+    <h5>Seleccionar Sabores</h5>
+    <div id="lista-productos">
+        </div>
+</div>
+
+<div class="total-bar d-flex justify-content-between align-items-center">
+    <div>
+        <small>Total a Pagar:</small>
+        <h3 class="m-0" id="granTotal">$0.00</h3>
+    </div>
+    <button onclick="prepararTicket()" class="btn btn-success btn-lg">Generar Ticket</button>
+</div>
+
+<div id="ticket-container">
+    <div class="ticket-header">
+        <h4>PALETAS "EL TÍO"</h4>
+        <p>Preventa y Pedidos</p>
+        <p id="ticketFecha">Fecha: --/--/----</p>
+    </div>
+    <div style="margin-bottom: 15px;">
+        <strong>Cliente:</strong> <span id="ticketCliente"></span><br>
+        <strong>Dirección:</strong> <span id="ticketDireccion"></span>
+    </div>
+    <div style="border-bottom: 1px solid #000; margin-bottom: 5px;"></div>
+    
+    <div id="ticketItems"></div>
+
+    <div style="border-top: 1px solid #000; margin-top: 5px;"></div>
+    <div class="ticket-total">
+        TOTAL: <span id="ticketTotal">$0.00</span>
+    </div>
+    <div class="ticket-footer">
+        <p>¡Gracias por su preferencia!</p>
+    </div>
+</div>
+
+<div class="modal fade" id="modalImagen" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Ticket Generado</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <p>Mantén presionada la imagen para copiarla o compartirla.</p>
+                <img id="imagenResultado" src="" alt="Ticket" class="img-fluid border shadow">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary w-100" onclick="compartir()">Compartir / Descargar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // --- CONFIGURACIÓN DE PRODUCTOS ---
+    // Agrega aquí los sabores y precios de tu tío
+    const productos = [
+        { id: 1, nombre: "Paleta de Limón", precio: 10 },
+        { id: 2, nombre: "Paleta de Grosella", precio: 10 },
+        { id: 3, nombre: "Paleta de Tamarindo", precio: 10 },
+        { id: 4, nombre: "Esquimal de Nuez", precio: 16 },
+        { id: 5, nombre: "Esquimal de Coco", precio: 16 },
+        { id: 6, nombre: "Paleta de Crema (Fresa)", precio: 14 },
+        { id: 7, nombre: "Paleta de Chocolate", precio: 16 }
+    ];
+
+    let carrito = {}; // Almacena cantidad por ID
+
+    // Inicializar la app
+    document.addEventListener("DOMContentLoaded", () => {
+        const contenedor = document.getElementById("lista-productos");
+        
+        productos.forEach(prod => {
+            carrito[prod.id] = 0; // Iniciar en 0
+            
+            const div = document.createElement("div");
+            div.className = "card card-product p-3";
+            div.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="m-0 fw-bold">${prod.nombre}</h6>
+                        <small class="text-muted">$${prod.precio} c/u</small>
+                    </div>
+                    <div class="qty-controls d-flex align-items-center gap-2">
+                        <button class="btn btn-outline-danger btn-sm" onclick="cambiarCant(${prod.id}, -1)">-</button>
+                        <span id="cant-${prod.id}" class="fw-bold">0</span>
+                        <button class="btn btn-outline-primary btn-sm" onclick="cambiarCant(${prod.id}, 1)">+</button>
+                    </div>
+                </div>
+            `;
+            contenedor.appendChild(div);
+        });
+        
+        // Poner fecha actual
+        const hoy = new Date();
+        document.getElementById("ticketFecha").innerText = "Fecha: " + hoy.toLocaleDateString('es-MX') + " " + hoy.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    });
+
+    function cambiarCant(id, cambio) {
+        if (carrito[id] + cambio >= 0) {
+            carrito[id] += cambio;
+            document.getElementById(`cant-${id}`).innerText = carrito[id];
+            calcularTotal();
+        }
+    }
+
+    function calcularTotal() {
+        let total = 0;
+        productos.forEach(prod => {
+            total += carrito[prod.id] * prod.precio;
+        });
+        document.getElementById("granTotal").innerText = "$" + total.toFixed(2);
+        return total;
+    }
+
+    function prepararTicket() {
+        // 1. Validar
+        const cliente = document.getElementById("clienteNombre").value;
+        const direccion = document.getElementById("clienteDireccion").value;
+        
+        if(!cliente) { alert("Por favor escribe el nombre del cliente"); return; }
+        if(calcularTotal() === 0) { alert("No has seleccionado paletas"); return; }
+
+        // 2. Llenar datos ocultos del ticket
+        document.getElementById("ticketCliente").innerText = cliente;
+        document.getElementById("ticketDireccion").innerText = direccion || "Sin dirección";
+        
+        const itemsContainer = document.getElementById("ticketItems");
+        itemsContainer.innerHTML = ""; // Limpiar anterior
+        
+        productos.forEach(prod => {
+            const cant = carrito[prod.id];
+            if(cant > 0) {
+                const subtotal = cant * prod.precio;
+                itemsContainer.innerHTML += `
+                    <div class="ticket-row">
+                        <span>${prod.nombre} <br> <small>(Cant: ${cant} x $${prod.precio})</small></span>
+                        <span>$${subtotal}</span>
+                    </div>
+                `;
+            }
+        });
+        
+        document.getElementById("ticketTotal").innerText = document.getElementById("granTotal").innerText;
+
+        // 3. Generar Imagen con html2canvas
+        const ticketDiv = document.getElementById("ticket-container");
+        
+        html2canvas(ticketDiv, { scale: 2 }).then(canvas => {
+            const imgUrl = canvas.toDataURL("image/png");
+            document.getElementById("imagenResultado").src = imgUrl;
+            
+            // Mostrar Modal
+            const modal = new bootstrap.Modal(document.getElementById('modalImagen'));
+            modal.show();
+        });
+    }
+
+    // Función para compartir (API nativa de celular)
+    async function compartir() {
+        const img = document.getElementById("imagenResultado").src;
+        const blob = await (await fetch(img)).blob();
+        const file = new File([blob], "ticket_paletas.png", { type: "image/png" });
+
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: 'Ticket de Compra',
+                    text: 'Aquí está el detalle de su pedido.'
+                });
+            } catch (err) {
+                console.log("Error al compartir", err);
+            }
+        } else {
+            alert("Tu navegador no soporta compartir directo. Mantén presionada la imagen para guardarla.");
+        }
+    }
+</script>
+
+</body>
+</html>
